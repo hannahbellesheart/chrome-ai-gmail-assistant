@@ -7,9 +7,7 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     format: 'plain-text',
     length: 'short',
   };
-  // const options_prompt = {
-  //   systemPrompt: 'You are responsible for sorting Nodelist based on the priority of innerTextcontent of element in an array'
-  // };
+
   const available_summary = (await self.ai.summarizer.capabilities()).available;
   // const available_prompt = (await self.ai.languageModel.capabilities()).available;
   let summarizer, promptAPI;
@@ -29,81 +27,167 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     await summarizer.ready;
   }
 
-  // chrome.runtime.sendMessage({from:"content",usecase:"promptAPI",mailArray: mailArray });
-  // chrome.runtime.onMessage.addListener(function(msg) {
-  //   if (msg.from == "background" && msg.usecase == "promptAPI") {
-  //     promptAPI = msg.promptAPI
-  //   }
-  // });
-  // if (available_prompt === 'no') {
-  //   // The Summarizer API isn't usable.
-  //   return;
-  // }
-  // if (available_prompt === 'readily') {
-  //   // The Summarizer API can be used immediately .
-  //   promptAPI = await self.ai.languageModel.create(options_prompt);
-  // } else {
-  //   // The Summarizer API can be used after the model is downloaded.
-  //   promptAPI = await self.ai.languageModel.create(options_prompt);
-  //   promptAPI.addEventListener('downloadprogress', (e) => {
-  //     console.log(e.loaded, e.total);
-  //   });
-  //   await promptAPI.ready;
-  // }
+  if (message.action === 'summarize') {
+    chrome.runtime.sendMessage(
+      { type: 'readlocalKeys', key: 'emails' },
+      async function (response) {
+        console.log(response);
+        let emails = response.emails || {};
+        document.body.style.backgroundColor = '#f0f8ff';
+        const metaInfo = document.querySelectorAll('.xY.a4W .xT');
+        // const Info = document.querySelectorAll(".xY.a4W .xT");
+        const mailArray = [];
+        for (const info of metaInfo) {
+          info.style.color = 'blue';
+          // let tempNode = info;
+          let text = info.textContent;
+          // console.log(text);
 
-  if (message.action === "summarize") {
-    // if ('ai' in self && 'summarizer' in self.ai) {
-    //   // The Summarizer API is supported.
-    //   console.log("Summarizer Supported");
-      
-    // }
-    chrome.runtime.sendMessage({ type: 'readlocalKeys', key:'emails'},async function(response) {
-      console.log(response);
-      let emails = response.emails || {};
-      document.body.style.backgroundColor = "#f0f8ff";
-      const metaInfo = document.querySelectorAll(".xY.a4W .xT");
-      // const Info = document.querySelectorAll(".xY.a4W .xT");
-      const mailArray = [];
-      for (const info of metaInfo) {
-        info.style.color = "blue";
-        // let tempNode = info;
-        let text = info.textContent;
-        // console.log(text);
-        
-        if (text != null) {
-          try {
-            const emailId = await generateContentHash(text);
+          if (text != null) {
+            try {
+              const emailId = await generateContentHash(text);
               console.log(emailId);
               if (emailId in emails) {
                 let summary = emails[emailId].summary;
-                await createNewSummaryElement(info.parentElement, emailId, summary);
+                await createNewSummaryElement(
+                  info.parentElement,
+                  emailId,
+                  summary
+                );
               } else {
                 await requestSummaryFromBackground(info, emailId);
                 // chrome.runtime.sendMessage({type:"processEmail", emailId: emailId, emailContent: info.textContent });
               }
-          } catch(error) {
-            console.log(error);
+            } catch (error) {
+              console.log(error);
+            }
           }
         }
-        // try{
-          
-        //   chrome.runtime.sendMessage({type:"processEmail",emailContent: info.textContent });
-        // } catch(error) {
-        //   console.error(error);
-        //   // mailArray.push({id: tempNode.id, text: tempNode.textContent});
-        //   continue;
-        // }
       }
-    });
+    );
+  }
 
+  if (message.action === 'replyFormal') {
+    console.log('Reply Triggered');
+
+    return new Promise(async (resolve) => {
+      const emailContent = document.querySelector('.ii.gt').textContent;
+      const response = await chrome.runtime.sendMessage({
+        type: 'replyFormal',
+        emailContent: emailContent,
+      });
+
+      if (response && response.reply) {
+        const replyButton = document.querySelector('.ams.bkH');
+        if (replyButton != null) {
+          replyButton.addEventListener('click', () => {
+            setTimeout(() => {
+              const textReplyBox = document.querySelector(
+                '.Am.aiL.aO9.Al.editable.LW-avf.tS-tW'
+              );
+              if (textReplyBox != null) {
+                textReplyBox.innerText = response.reply;
+              }
+            }, 3000);
+          });
+          replyButton.click();
+          console.log(response);
+        } else {
+          const textReplyBox = document.querySelector(
+            '.Am.aiL.aO9.Al.editable.LW-avf.tS-tW'
+          );
+          if (textReplyBox != null) {
+            textReplyBox.innerText = response.reply;
+          }
+        }
+      }
+      resolve();
+    });
+  }
+
+  if (message.action === 'composeFormalMail') {
+    console.log('Compose Mail Triggered');
+
+    return new Promise(async (resolve) => {
+      const emailPrompt = message.emailPrompt;
+      const response = await chrome.runtime.sendMessage({
+        type: 'composeFormalMail',
+        emailPrompt: emailPrompt,
+      });
+
+      if (response) {
+        const mailButton = document.querySelector('.T-I.T-I-KE.L3');
+        console.log(response);
+        
+        if (mailButton != null) {
+          // mailButton.addEventListener('click', () => {
+            
+          // });
+          
+          mailButton.click();
+          await wait(3000);
+          const textMailBox = document.querySelector(
+            '.Am.aiL.Al.editable.LW-avf.tS-tW'
+          );
+          const subjectBox = document.querySelector(
+            '.aoT'
+          );
+          console.log(textMailBox, subjectBox);
+
+          if (subjectBox != null) {
+            subjectBox.value = response.subject;
+          }
+
+          if (textMailBox != null) {
+            textMailBox.innerText = response.mail;
+          }
+        } else {
+          const textMailBox = document.querySelector(
+            '.Am.aiL.Al.editable.LW-avf.tS-tW'
+          );
+          const subjectBox = document.querySelector(
+            '.aoT'
+          );
+          if (textMailBox != null) {
+            textMailBox.value = response.mail;
+          }
+          if (subjectBox != null) {
+            subjectBox.value = response.subject;
+          }
+
+        }
+      }
+      resolve();
+    });
+  }
+});
+
+// Function to generate a hash of email content (optional: to detect changes more efficiently)
+function generateContentHash(content) {
+  return crypto.subtle
+    .digest('SHA-256', new TextEncoder().encode(content))
+    .then((buffer) => {
+      return Array.from(new Uint8Array(buffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    });
+}
 
 function requestSummaryFromBackground(parent, emailId) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(
-      {type:"processEmail", emailId: emailId, emailContent: parent.textContent },
+      {
+        type: 'processEmail',
+        emailId: emailId,
+        emailContent: parent.textContent,
+      },
       (response) => {
         if (response && response.summary) {
-          createNewSummaryElement(parent.parentElement, emailId, response.summary);
+          createNewSummaryElement(
+            parent.parentElement,
+            emailId,
+            response.summary
+          );
         }
         resolve();
       }
@@ -116,59 +200,15 @@ function createNewSummaryElement(parent, emailId, summary) {
   if (childElement) {
     childElement.innerHTML = summary;
   } else {
-    const newElement = document.createElement("div");
+    const newElement = document.createElement('div');
     newElement.id = emailId;
     newElement.innerHTML = summary;
-    // parent.insertBefore(newElement, parent.firstChild);
     parent.append(newElement);
   }
 }
 
-
-    // document.body.style.backgroundColor = "#f0f8ff";
-    // const metaInfo = document.querySelectorAll(".xY.a4W");
-    // const mailArray = [];
-    // for (const info of metaInfo) {
-    //   info.style.color = "blue";
-    //   let tempNode = info;
-    //   try{
-    //     const summary = await summarizer.summarize(info.textContent, {
-    //       context: 'This is gmail meta information about each mail. Need summary within 150 characters and only summarise english',
-    //     });
-    //     tempNode.textContent = summary;
-    //     mailArray.push({id: tempNode.id, text: summary});
-    //   } catch(error) {
-    //     console.error(error);
-    //     // mailArray.push({id: tempNode.id, text: tempNode.textContent});
-    //     continue;
-    //   }
-    // }
-
-
-
-
-    // chrome.runtime.sendMessage({from:"content",mailArray: mailArray }); //first, tell the background page that this is the tab that wants to receive the messages.
-
-    // chrome.runtime.onMessage.addListener(function(msg) {
-    //   if (msg.from == "background") {
-    //     var priority = msg.priority;
-    //     console.log(priority);
-    //   }
-    // });
-    
-    // console.log("#STARTING PRIORITIZING");
-    
-    // const prioritizedMails = await promptAPI.prompt(mailArray)
-    // console.log(prioritizedMails);
-    
-    sendResponse({ status: "UI modified!" });
-  }
-});
-
-// Function to generate a hash of email content (optional: to detect changes more efficiently)
-function generateContentHash(content) {
-  return crypto.subtle.digest('SHA-256', new TextEncoder().encode(content))
-      .then(buffer => {
-          return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-      });
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms); // Resolve the promise after ms milliseconds
+  });
 }

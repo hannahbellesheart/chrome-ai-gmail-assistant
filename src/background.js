@@ -1,5 +1,5 @@
 // background.js
-let summarizer, promptAPI;
+let summarizer, replyAPI;
 chrome.runtime.onInstalled.addListener(async () => {
   console.log("Extension Installed");
 
@@ -32,102 +32,29 @@ chrome.runtime.onInstalled.addListener(async () => {
   
 
   // Prompt
-  const options_prompt = {
-    systemPrompt:    ``
-    // `You are a mail priority checker. If a mail has priority or urgency you need to tell if its important. You can respond only with true if its important or else false`
-    // `Here is a list of text data with their IDs in JSON Format. Sort these text based on [urgency, importance] (e.g., relevance, sentiment, date mentioned, etc.) and return the sorted result, preserving their IDs. Only filter the english.
-
-    // Input:
-    // [
-    //   {"id": "1", "text": "Email content 1"},
-    //   {"id": "2", "text": "Email content 2"},
-    //   {"id": "3", "text": "Email content 3"}
-    // ]
-    
-    // Output:
-    // Please return the sorted result as a list of IDs in order, like this:
-    // [ "2", "1", "3" ]`
-    // `Only reply true or not. True if the textcontent of the mail is important. False if its not`
+  const options_reply = {
+    systemPrompt: `You are a bot which helps with mails.`
   };
 
 
-  const available_prompt = (await chrome.aiOriginTrial.languageModel.capabilities()).available;
-  if (available_prompt === 'no') {
-    // The Summarizer API isn't usable.
+  const available_reply = (await chrome.aiOriginTrial.languageModel.capabilities()).available;
+  if (available_reply === 'no') {
+    // The Reply Formal API isn't usable.
     return;
   }
-  if (available_prompt === 'readily') {
-    // The Summarizer API can be used immediately .
-    promptAPI = await chrome.aiOriginTrial.languageModel.create(options_prompt);
+  if (available_reply === 'readily') {
+    // The Reply Formal API can be used immediately .
+    replyAPI = await chrome.aiOriginTrial.languageModel.create(options_reply);
   } else {
-    // The Summarizer API can be used after the model is downloaded.
-    promptAPI = await chrome.aiOriginTrial.languageModel.create(options_prompt);
-    promptAPI.addEventListener('downloadprogress', (e) => {
+    // The Reply Formal API can be used after the model is downloaded.
+    replyAPI = await chrome.aiOriginTrial.languageModel.create(options_reply);
+    replyAPIFormal.addEventListener('downloadprogress', (e) => {
       console.log(e.loaded, e.total);
     });
-    await promptAPI.ready;
+    await replyAPI.ready;
   }
 });
 
-
-
-// chrome.runtime.onMessage.addListener(function(msg,sender) {
-//   if (msg.from == "content" && msg.usecase == "promptAPI") {  //get content scripts tab id
-//     contentTabId = sender.tab.id;
-//     //Return the prompt to content.js
-//     chrome.tabs.sendMessage(contentTabId, {  //send it to content script
-//       from: "background",
-//       promptAPI: promptAPI,
-//       usecase: "promptAPI"
-//     });
-//   }
-//   if (msg.from == "content") {  //get content scripts tab id
-//     contentTabId = sender.tab.id;
-//     console.log(msg.mailArray);
-    
-//       //Execute the prompt and input]
-//       // for (const mail of msg.mailArray) {
-//       //   try{
-//       //     const promptMsg =  `here is the mail - ${mail.text}`;
-//       //     const isPriority= await promptAPI.prompt(promptMsg);
-//       //     console.log(isPriority);
-//       //   } catch(error) {
-//       //     console.log(error);
-//       //     continue;
-//       //   }
-//       // }
-    
-
-//     // `
-//     //   Sort the following these by importance and urgency and return the sorted mails.
-      
-//     //   Input:
-//     //   ${JSON.stringify(msg.mailArray)}
-      
-//     //   Output:
-//     //   `
-//     // `This is the mail content: ${msg.mail}`
-   
-//     // console.log(promptMsg);
-      
-//     // const prioritizedIDs= await promptAPI.prompt(promptMsg);
-//     // console.log(prioritizedIDs);
-    
-//     // //Return the prompt to content.js
-//     // chrome.tabs.sendMessage(contentTabId, {  //send it to content script
-//     //   from: "background",
-//     //   priority: prioritizedIDs,
-//     // });
-//   }
-
-//   // if (msg.from == "popup" && contentTabId) {  //got message from popup
-//   //   chrome.tabs.sendMessage(contentTabId, {  //send it to content script
-//   //     from: "background",
-//   //     first: msg.first,
-//   //     second: msg.second
-//   //   });
-//   // }
-// });
 
 // Function to generate a hash of email content (optional: to detect changes more efficiently)
 function generateContentHash(content) {
@@ -199,6 +126,9 @@ async function processEmail(emailId, emailContent) {
     return summary
 }
 
+function replyBackFormal() {
+}
+
 // Listen for messages to process new or updated emails
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "processEmail") {
@@ -213,14 +143,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
       return true;
   }
-});
-
-// Listen for messages to process new or updated emails
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "readlocalKeys") {
     chrome.storage.local.get([message.key], function(result) {
       sendResponse({ emails: result[message.key] });
     });
+    return true;
+  }
+  if (message.type === "replyFormal") {
+    (async function () {
+      try {
+        const response = await replyAPI.prompt(`Reply formally to this mail with just reply content and there should not be subject in the content : ${message.emailContent}`);
+        console.log(response);
+        sendResponse({reply : response});
+      } catch (error) {
+        console.error('Error in reply back operation:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+  if (message.type === "composeFormalMail") {
+    (async function () {
+      try {
+        console.log(message.emailPrompt);
+        
+        const mail = await replyAPI.prompt(`Generate the formal mail for this content with just reply content and there should not be subject in the content: ${message.emailPrompt}`);
+        const subject = await replyAPI.prompt(`Understand the following mail ${mail}. You should only generate subject with no extra content`);
+        console.log(subject, mail);
+        sendResponse({mail : mail, subject: subject});
+      } catch (error) {
+        console.error('Error in reply back operation:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true;
   }
 });
